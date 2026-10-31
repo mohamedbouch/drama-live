@@ -1,0 +1,26 @@
+name: Drama selected refresh
+
+on:
+  schedule:
+    - cron: "0 7 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: drama-selected
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install curl_cffi pycryptodome
+      - name: Selected sports channels
+        env:
+          ADMIN_TOKEN: ${{ secrets.ADMIN_TOKEN }}
+          TOPIC: arabic_sport
+        run: python scripts/drama_daily.py
