@@ -18,7 +18,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-       - run: pip install --upgrade pip && pip install curl_cffi pycryptodome
+      - run: pip install --upgrade pip && pip install curl_cffi pycryptodome
       - name: Selected sports channels
         env:
           ADMIN_TOKEN: ${{ secrets.ADMIN_TOKEN }}
