@@ -1,5 +1,5 @@
 """
-Selected Arabic sports channels -> Cloudflare Worker (key: drama_live_channels).
+Arabic sports channels -> Cloudflare Worker (key: drama_live_channels).
 Runs once a day from GitHub Actions. Merges with what is already saved.
 
 Environment:
@@ -77,37 +77,24 @@ def get_channel_data(channel_id):
     return None
 
 
-TARGET_CHANNELS = [
-    "Thmanyah 1", "Thmanyah 2", "Thmanyah 3",
-    "Bein S. News", "Bein S. 1", "Bein S. 2", "Bein S. 3", "Bein S. 4",
-    "Bein S. 5", "Bein S. 6", "Bein S. 7", "Bein S. 8", "Bein S. 9",
-    "Bein S. En 1", "Bein S. En 2", "Bein S. Fr 1", "Bein S. Fr 2",
-    "Bein S. Tr 1", "Bein Sport", "Bein Max. 1", "Bein Max. 2",
-    "AD Sport 1", "AD Sport 2", "AD Sport Premium 1", "AD Sport Premium 2",
-    "Dubai Sports 1", "Dubai Sports 2",
-    "Al Iraqiya Sports", "Al Rabiaa Iraq Sport",
-    "LIBYA SPORT 1", "LIBYA SPORT 2",
-    "Almaghribia 5", "Arryadia 3",
-    "MBC 1", "Al Ahly", "Al Zamalek",
-    "ON Sport", "ON Sport 2",
-    "SSC 1", "SSC 2", "SSC 3", "SSC 4K",
-    "Watania 1", "Watania 2", "Watania Sports",
-    "A Spor Turkey", "ACC Network",
-    "Algeria 1", "Algeria 6",
-    "Alwan 1", "Alwan 2", "Alwan 3", "Alwan 4", "Alwan 5",
-    "Alwan 6", "Alwan 7", "Alwan 8", "Alwan 9", "Alwan 10",
-]
+# ═══════════ استبعاد قنوات beIN Sports من 1 إلى 9 ═══════════
+EXCLUDED_BEIN_NAMES = {
+    "bein s. 1", "bein s. 2", "bein s. 3", "bein s. 4", "bein s. 5",
+    "bein s. 6", "bein s. 7", "bein s. 8", "bein s. 9",
+    "bein sport 1", "bein sport 2", "bein sport 3", "bein sport 4", "bein sport 5",
+    "bein sport 6", "bein sport 7", "bein sport 8", "bein sport 9",
+    "beinsport 1", "beinsport 2", "beinsport 3", "beinsport 4", "beinsport 5",
+    "beinsport 6", "beinsport 7", "beinsport 8", "beinsport 9",
+}
 
 
 def _norm(x):
     return re.sub(r"\s+", " ", str(x or "")).strip().lower()
 
 
-_TARGETS = {_norm(t) for t in TARGET_CHANNELS}
-
-
-def is_target_channel(name):
-    return _norm(name) in _TARGETS
+def is_excluded_channel(name):
+    """يتحقق إذا كانت القناة من قنوات beIN Sports 1-9 (المستبعدة)"""
+    return _norm(name) in EXCLUDED_BEIN_NAMES
 
 
 def check_url(url):
@@ -145,6 +132,7 @@ def main():
     if not TOKEN:
         print("ADMIN_TOKEN missing")
         sys.exit(1)
+
     print(f"Refreshing topic: {TOPIC}")
     existing = worker_get()
     print(f"Currently saved: {len(existing)}")
@@ -153,31 +141,37 @@ def main():
     if not resp or "live" not in resp:
         print("Failed to fetch channel list. Nothing saved.")
         sys.exit(1)
+
     all_channels = resp["live"]
-    channels = [c for c in all_channels if is_target_channel(c.get("name", ""))]
-    print(f"Found {len(all_channels)} channels, selected {len(channels)} from your list")
-    found = {_norm(c.get("name")) for c in channels}
-    missing = [t for t in TARGET_CHANNELS if _norm(t) not in found]
-    if missing:
-        print("Not found in source today:", ", ".join(missing))
+    
+    # فلترة: استبعاد beIN 1-9
+    channels = [c for c in all_channels if not is_excluded_channel(c.get("name", ""))]
+    excluded_count = len(all_channels) - len(channels)
+    
+    print(f"Found {len(all_channels)} channels, excluded {excluded_count} (beIN 1-9), selected {len(channels)}")
 
     result = dict(existing)
     updated = 0
+
     for i, c in enumerate(channels, 1):
         ch_id, name = c.get("id_live"), c.get("name")
         logo = c.get("img_url", "")
         print(f"[{i}/{len(channels)}] {name}...", end=" ")
+        
         live = get_channel_data(ch_id)
         if not live:
             print("no data (kept old)")
             continue
+        
         text = (live.get("url", "") or "") + " " + (live.get("backup", "") or "")
         links = list(dict.fromkeys(re.findall(r"https?://[^\s\"\x27\\]+\.(?:m3u8|mpd)[^\s\"\x27\\]*", text)))
         for r_url in re.findall(r"http://\.LS\.V2[^\s\"\x27\\]+/s", text):
             res = resolve_redirect(r_url, ch_id)
             if res and res not in links:
                 links.append(res)
+        
         ok = [l for l in links if check_url(l)]
+        
         if ok:
             print(f"ok {len(ok)}/{len(links)}")
             result[ch_id] = {"id": ch_id, "name": name, "logo": logo, "servers": ok,
@@ -190,10 +184,12 @@ def main():
     if updated == 0:
         print("No channel updated. Nothing saved.")
         sys.exit(1)
+
     status = worker_put(result)
     if status != 200:
         print(f"Save failed: {status}")
         sys.exit(1)
+    
     print(f"Saved. Updated {updated}, total {len(result)}")
 
 
