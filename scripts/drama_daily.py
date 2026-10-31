@@ -1,5 +1,5 @@
 """
-Arabic sports channels ONLY -> Cloudflare Worker (key: drama_live_channels).
+Arabic sports channels -> Cloudflare Worker (key: drama_live_channels).
 Runs once a day from GitHub Actions. Merges with what is already saved.
 
 Environment:
@@ -87,31 +87,14 @@ EXCLUDED_BEIN_NAMES = {
     "beinsport 6", "beinsport 7", "beinsport 8", "beinsport 9",
 }
 
-
-# ═══════════ القنوات العربية المسموح بها (للاحتفاظ بها فقط) ═══════════
-ARABIC_CHANNELS = {
-    "ad sport 1", "ad sport 2", "ad sport premium 1", "ad sport premium 2",
-    "dubai sports 1", "dubai sports 2", "dubai sports 3", "dubai racing 1", "dubai racing 2",
-    "al iraqiya sports", "al rabiaa iraq sport", "al rabiaa iraq",
-    "libya sport 1", "libya sport 2",
-    "almaghribia 5", "arryadia 3", "arryadia",
-    "mbc 1", "al ahly", "al zamalek",
-    "on sport", "on sport 1", "on sport 2", "on sport 3",
-    "ksa sports 1", "ksa sports 2", "ksa sports 3", "ksa sport 1", "ksa sport 2", "ksa sport 3",
-    "ssc 1", "ssc 2", "ssc 3", "ssc 4k", "ssc action waleed", "ssc action",
-    "watania 1", "watania 2", "watania sports",
-    "algeria 1", "algeria 6",
-    "alwan 1", "alwan 2", "alwan 3", "alwan 4", "alwan 5",
-    "alwan 6", "alwan 7", "alwan 8", "alwan 9", "alwan 10",
-    "thmanyah 1", "thmanyah 2", "thmanyah 3",
-    "bein s. news", "bein news",
-    "bein max. 1", "bein max. 2", "bein max 1", "bein max 2",
-    "bein xtra 1", "bein xtra 2", "bein xtra 3",
-    "bein s. en 1", "bein s. en 2", "bein s. en 3", "bein s. en 4",
-    "bein s. fr 1", "bein s. fr 2", "bein s. fr 3",
-    "bein s. tr 1", "bein s. tr 2", "bein s. tr 3", "bein s. tr 4",
-    "bein sport", "beinsport",
-    "a spor turkey",
+# ═══════════ استبعاد القنوات الأجنبية الصريحة ═══════════
+# نستبعد فقط القنوات التي نعرف أنها أجنبية وليست عربية
+EXCLUDED_FOREIGN_NAMES = {
+    "5 live israel", "5 stars israel", "abc usa", "acc network usa",
+    "amc usa", "abc", "nbc", "cbs", "fox", "espn", "sky sport",
+    "bt sport", "dazn", "eurosport", "nfl network", "nba tv",
+    "mlb network", "nhl network", "golf channel", "tennis channel",
+    "motogp", "formula 1", "ufc", "wwe", "boxing",
 }
 
 
@@ -119,29 +102,16 @@ def _norm(x):
     return re.sub(r"\s+", " ", str(x or "")).strip().lower()
 
 
-def is_arabic_channel(name):
-    """
-    يتحقق إذا كانت القناة عربية:
-    1. تحتوي على أحرف عربية في الاسم.
-    2. أو موجودة في قائمة القنوات العربية المعروفة (ARABIC_CHANNELS).
-    """
-    n = _norm(name)
-    
-    # إذا كان الاسم يحتوي على أحرف عربية
-    if re.search(r"[\u0600-\u06FF]", n):
-        return True
-    
-    # إذا كان موجوداً في قائمة القنوات العربية
-    for arabic in ARABIC_CHANNELS:
-        if arabic in n:
-            return True
-    
-    return False
-
-
 def is_excluded_bein(name):
-    """يتحقق إذا كانت القناة من beIN 1-9"""
     return _norm(name) in EXCLUDED_BEIN_NAMES
+
+
+def is_excluded_foreign(name):
+    n = _norm(name)
+    for foreign in EXCLUDED_FOREIGN_NAMES:
+        if foreign in n:
+            return True
+    return False
 
 
 def check_url(url):
@@ -193,10 +163,10 @@ def main():
     
     # فلترة:
     # 1. استبعاد beIN 1-9
-    # 2. الاحتفاظ فقط بالقنوات العربية
+    # 2. استبعاد القنوات الأجنبية الصريحة
     channels = []
     excluded_bein = 0
-    excluded_non_arabic = 0
+    excluded_foreign = 0
     
     for c in all_channels:
         name = c.get("name", "")
@@ -205,16 +175,16 @@ def main():
             excluded_bein += 1
             continue
         
-        if not is_arabic_channel(name):
-            excluded_non_arabic += 1
+        if is_excluded_foreign(name):
+            excluded_foreign += 1
             continue
         
         channels.append(c)
     
     print(f"Found {len(all_channels)} channels:")
     print(f"  - Excluded beIN 1-9: {excluded_bein}")
-    print(f"  - Excluded non-Arabic: {excluded_non_arabic}")
-    print(f"  - Selected (Arabic only): {len(channels)}\n")
+    print(f"  - Excluded foreign: {excluded_foreign}")
+    print(f"  - Selected: {len(channels)}\n")
 
     result = dict(existing)
     updated = 0
